@@ -24,6 +24,7 @@ users_db = {}  # {username: {password_hash, session_token}}
 meetups_db = {}  # {meetup_id: meetup_data}
 participants_db = {}  # {meetup_id: [user_ids]}
 chat_rooms_db = {}  # {meetup_id: [messages]}
+user_last_read_db = {}  # {user_name: {meetup_id: last_read_timestamp}}
 meetup_counter = 0
 
 security = HTTPBearer()
@@ -313,3 +314,46 @@ async def delete_meetup(meetup_id: int, current_user: str = Depends(get_current_
     del chat_rooms_db[meetup_id]
     
     return {"message": "Meetup deleted successfully"}
+
+@app.get("/api/user/participations")
+async def get_user_participations(current_user: str = Depends(get_current_user)):
+    """Get all meetups that the current user has joined"""
+    user_participations = []
+    for meetup_id, participants in participants_db.items():
+        if current_user in participants:
+            if meetup_id in meetups_db:
+                user_participations.append(meetups_db[meetup_id])
+    return user_participations
+
+@app.get("/api/meetups/{meetup_id}/unread-count")
+async def get_unread_count(meetup_id: int, current_user: str = Depends(get_current_user)):
+    """Get unread message count for a specific meetup"""
+    if meetup_id not in meetups_db:
+        raise HTTPException(status_code=404, detail="Meetup not found")
+    
+    if (current_user not in participants_db[meetup_id] and 
+        current_user != meetups_db[meetup_id]["creator"]):
+        return {"unread_count": 0}
+    
+    messages = chat_rooms_db.get(meetup_id, [])
+    if not messages:
+        return {"unread_count": 0}
+    
+    last_read = user_last_read_db.get(current_user, {}).get(meetup_id)
+    if not last_read:
+        return {"unread_count": len(messages)}
+    
+    unread_count = sum(1 for msg in messages if msg["timestamp"] > last_read)
+    return {"unread_count": unread_count}
+
+@app.post("/api/meetups/{meetup_id}/mark-read")
+async def mark_messages_read(meetup_id: int, current_user: str = Depends(get_current_user)):
+    """Mark all messages in a meetup as read for the current user"""
+    if meetup_id not in meetups_db:
+        raise HTTPException(status_code=404, detail="Meetup not found")
+    
+    if current_user not in user_last_read_db:
+        user_last_read_db[current_user] = {}
+    
+    user_last_read_db[current_user][meetup_id] = datetime.now().isoformat()
+    return {"message": "Messages marked as read"}

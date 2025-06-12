@@ -54,6 +54,8 @@ function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [participants, setParticipants] = useState<string[]>([])
+  const [userParticipations, setUserParticipations] = useState<number[]>([])
+  const [unreadCounts, setUnreadCounts] = useState<{[key: number]: number}>({})
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showChatDialog, setShowChatDialog] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -85,8 +87,15 @@ function App() {
   useEffect(() => {
     if (isLoggedIn) {
       fetchMeetups()
+      fetchUserParticipations()
     }
   }, [searchQuery, dateFilter, isLoggedIn])
+
+  useEffect(() => {
+    if (isLoggedIn && meetups.length > 0) {
+      fetchUnreadCounts()
+    }
+  }, [meetups, isLoggedIn])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -183,6 +192,7 @@ function App() {
       if (response.ok) {
         alert('参加表明しました！')
         fetchParticipants(meetupId)
+        fetchUserParticipations()
       } else {
         alert('参加表明に失敗しました')
       }
@@ -198,6 +208,50 @@ function App() {
       setParticipants(data.participants)
     } catch (error) {
       console.error('Failed to fetch participants:', error)
+    }
+  }
+
+  const fetchUserParticipations = async () => {
+    if (!user) return
+    
+    try {
+      const response = await fetch(`${API_URL}/api/user/participations`, {
+        headers: { 'Authorization': `Bearer ${user.token}` }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setUserParticipations(data.map((meetup: Meetup) => meetup.id))
+      }
+    } catch (error) {
+      console.error('Failed to fetch user participations:', error)
+    }
+  }
+
+  const fetchUnreadCounts = async () => {
+    if (!user) return
+    
+    try {
+      const promises = meetups.map(async (meetup) => {
+        const response = await fetch(`${API_URL}/api/meetups/${meetup.id}/unread-count`, {
+          headers: { 'Authorization': `Bearer ${user.token}` }
+        })
+        if (response.ok) {
+          const data = await response.json()
+          return { meetupId: meetup.id, count: data.unread_count }
+        }
+        return { meetupId: meetup.id, count: 0 }
+      })
+      
+      const results = await Promise.all(promises)
+      const counts = results.reduce((acc, { meetupId, count }) => {
+        acc[meetupId] = count
+        return acc
+      }, {} as {[key: number]: number})
+      
+      setUnreadCounts(counts)
+    } catch (error) {
+      console.error('Failed to fetch unread counts:', error)
     }
   }
 
@@ -270,11 +324,21 @@ function App() {
     setMeetups([])
   }
 
-  const openChatDialog = (meetup: Meetup) => {
+  const openChatDialog = async (meetup: Meetup) => {
     setSelectedMeetup(meetup)
     setShowChatDialog(true)
     fetchParticipants(meetup.id)
     fetchChatMessages(meetup.id)
+    
+    try {
+      await fetch(`${API_URL}/api/meetups/${meetup.id}/mark-read`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${user?.token}` }
+      })
+      fetchUnreadCounts()
+    } catch (error) {
+      console.error('Failed to mark messages as read:', error)
+    }
   }
 
   if (!isLoggedIn) {
@@ -516,20 +580,30 @@ function App() {
                         </div>
                         <div className="flex space-x-2">
                           <Button
-                            variant="outline"
+                            variant={userParticipations.includes(meetup.id) ? "default" : "outline"}
                             size="sm"
                             onClick={() => handleJoinMeetup(meetup.id)}
+                            disabled={userParticipations.includes(meetup.id)}
                           >
                             <Users className="w-4 h-4 mr-1" />
-                            参加する
+                            {userParticipations.includes(meetup.id) ? "参加済み" : "参加する"}
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => openChatDialog(meetup)}
+                            className="relative"
                           >
                             <MessageCircle className="w-4 h-4 mr-1" />
                             チャット
+                            {unreadCounts[meetup.id] > 0 && (
+                              <Badge 
+                                variant="destructive" 
+                                className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+                              >
+                                {unreadCounts[meetup.id]}
+                              </Badge>
+                            )}
                           </Button>
                         </div>
                       </div>
