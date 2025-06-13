@@ -4,6 +4,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+import pytz
 import hashlib
 import secrets
 import re
@@ -29,6 +30,11 @@ meetup_counter = 0
 
 security = HTTPBearer()
 
+def get_jst_now():
+    """Get current datetime in Japan Standard Time (JST)"""
+    jst = pytz.timezone('Asia/Tokyo')
+    return datetime.now(jst)
+
 class UserLogin(BaseModel):
     name: str
     password: str
@@ -40,6 +46,10 @@ class UserRegister(BaseModel):
 class MeetupCreate(BaseModel):
     content: str
     datetime: Optional[str] = None
+    food_item: Optional[str] = None
+    budget: Optional[str] = None
+    location: Optional[str] = None
+    structured_datetime: Optional[str] = None
 
 class MeetupResponse(BaseModel):
     id: int
@@ -200,20 +210,39 @@ async def create_meetup(meetup: MeetupCreate, current_user: str = Depends(get_cu
     global meetup_counter
     meetup_counter += 1
     
-    structured_data = extract_structured_data(meetup.content)
-    hashtags = generate_hashtags(meetup.content, structured_data)
-    title, description = generate_title_and_description(meetup.content, structured_data)
+    if meetup.food_item or meetup.budget or meetup.location:
+        structured_data = {
+            "food_genre": meetup.food_item,
+            "specific_menu": None,
+            "location": meetup.location,
+            "budget": meetup.budget,
+            "other_requirements": []
+        }
+        content_parts = []
+        if meetup.food_item:
+            content_parts.append(f"{meetup.food_item}の募集")
+        if meetup.budget:
+            content_parts.append(f"予算:{meetup.budget}")
+        if meetup.location:
+            content_parts.append(f"場所:{meetup.location}")
+        content = " ".join(content_parts) if content_parts else meetup.content
+        title = f"【{meetup.food_item or '食事'}募集】"
+        hashtags = generate_hashtags(content, structured_data)
+    else:
+        structured_data = extract_structured_data(meetup.content)
+        hashtags = generate_hashtags(meetup.content, structured_data)
+        title, content = generate_title_and_description(meetup.content, structured_data)
     
     meetup_data = {
         "id": meetup_counter,
         "title": title,
-        "content": description,
+        "content": content,
         "original_content": meetup.content,
         "structured_data": structured_data,
         "hashtags": hashtags,
         "creator": current_user,
-        "created_at": datetime.now().isoformat(),
-        "datetime": meetup.datetime
+        "created_at": get_jst_now().isoformat(),
+        "datetime": meetup.structured_datetime or meetup.datetime
     }
     
     meetups_db[meetup_counter] = meetup_data
@@ -283,7 +312,7 @@ async def send_message(meetup_id: int, message: ChatMessage, current_user: str =
         "id": message_id,
         "user": current_user,
         "message": message.message,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": get_jst_now().isoformat()
     }
     
     chat_rooms_db[meetup_id].append(chat_message)
@@ -355,5 +384,5 @@ async def mark_messages_read(meetup_id: int, current_user: str = Depends(get_cur
     if current_user not in user_last_read_db:
         user_last_read_db[current_user] = {}
     
-    user_last_read_db[current_user][meetup_id] = datetime.now().isoformat()
+    user_last_read_db[current_user][meetup_id] = get_jst_now().isoformat()
     return {"message": "Messages marked as read"}

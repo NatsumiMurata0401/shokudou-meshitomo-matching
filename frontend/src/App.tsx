@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Search, Plus, MessageCircle, Calendar, MapPin, DollarSign, Users, Trash2, Send } from 'lucide-react'
+import { format, parseISO } from 'date-fns'
+import { ja } from 'date-fns/locale'
 import './App.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -50,6 +52,9 @@ function App() {
   const [dateFilter, setDateFilter] = useState('')
   const [newMeetupContent, setNewMeetupContent] = useState('')
   const [newMeetupDateTime, setNewMeetupDateTime] = useState('')
+  const [newMeetupFoodItem, setNewMeetupFoodItem] = useState('')
+  const [newMeetupBudget, setNewMeetupBudget] = useState('')
+  const [newMeetupLocation, setNewMeetupLocation] = useState('')
   const [selectedMeetup, setSelectedMeetup] = useState<Meetup | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [newMessage, setNewMessage] = useState('')
@@ -161,14 +166,21 @@ function App() {
           'Authorization': `Bearer ${user.token}`
         },
         body: JSON.stringify({
-          content: newMeetupContent,
-          datetime: newMeetupDateTime || undefined
+          content: newMeetupContent || `${newMeetupFoodItem} ${newMeetupBudget} ${newMeetupLocation}`,
+          datetime: newMeetupDateTime || undefined,
+          food_item: newMeetupFoodItem,
+          budget: newMeetupBudget,
+          location: newMeetupLocation,
+          structured_datetime: newMeetupDateTime
         })
       })
       
       if (response.ok) {
         setNewMeetupContent('')
         setNewMeetupDateTime('')
+        setNewMeetupFoodItem('')
+        setNewMeetupBudget('')
+        setNewMeetupLocation('')
         setShowCreateDialog(false)
         fetchMeetups()
       } else {
@@ -445,16 +457,49 @@ function App() {
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleCreateMeetup} className="space-y-4">
-                    <Textarea
-                      placeholder="例：6月15日19時に渋谷で焼肉食べたい！予算は一人5000円くらいで個室希望です！"
-                      value={newMeetupContent}
-                      onChange={(e) => setNewMeetupContent(e.target.value)}
-                      rows={4}
-                      required
-                    />
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        希望日時（任意）
+                        食べたいもの！
+                      </label>
+                      <Input
+                        placeholder="例：焼肉、ラーメン、イタリアン"
+                        value={newMeetupFoodItem}
+                        onChange={(e) => setNewMeetupFoodItem(e.target.value)}
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        予算
+                      </label>
+                      <select 
+                        className="w-full rounded-md border border-zinc-200 bg-transparent px-3 py-2 text-sm"
+                        value={newMeetupBudget}
+                        onChange={(e) => setNewMeetupBudget(e.target.value)}
+                      >
+                        <option value="">選択してください</option>
+                        <option value="〜1,000円">〜1,000円</option>
+                        <option value="〜3,000円">〜3,000円</option>
+                        <option value="〜5,000円">〜5,000円</option>
+                        <option value="5,000円〜">5,000円〜</option>
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        場所
+                      </label>
+                      <Input
+                        placeholder="例：渋谷、新宿、オフィス周辺"
+                        value={newMeetupLocation}
+                        onChange={(e) => setNewMeetupLocation(e.target.value)}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        希望日時
                       </label>
                       <Input
                         type="datetime-local"
@@ -462,6 +507,7 @@ function App() {
                         onChange={(e) => setNewMeetupDateTime(e.target.value)}
                       />
                     </div>
+                    
                     <Button type="submit" className="w-full">募集を作成</Button>
                   </form>
                 </DialogContent>
@@ -555,7 +601,7 @@ function App() {
                         {meetup.datetime && (
                           <div className="flex items-center text-sm text-gray-600">
                             <Calendar className="w-4 h-4 mr-1" />
-                            <span>{new Date(meetup.datetime).toLocaleString('ja-JP')}</span>
+                            <span>{format(parseISO(meetup.datetime), 'yyyy年MM月dd日 HH:mm', { locale: ja })} (JST)</span>
                           </div>
                         )}
                       </div>
@@ -575,7 +621,7 @@ function App() {
                         <div className="text-sm text-gray-500">
                           <span>投稿者: {meetup.creator}</span>
                           <span className="ml-4">
-                            {new Date(meetup.created_at).toLocaleString('ja-JP')}
+                            {format(parseISO(meetup.created_at), 'yyyy年MM月dd日 HH:mm', { locale: ja })} (JST)
                           </span>
                         </div>
                         <div className="flex space-x-2">
@@ -632,7 +678,7 @@ function App() {
                     <div className="flex justify-between items-start">
                       <span className="font-medium text-blue-600">{msg.user}</span>
                       <span className="text-xs text-gray-500">
-                        {new Date(msg.timestamp).toLocaleString('ja-JP')}
+                        {format(parseISO(msg.timestamp), 'yyyy年MM月dd日 HH:mm', { locale: ja })} (JST)
                       </span>
                     </div>
                     <p className="text-gray-700 mt-1">{msg.message}</p>
