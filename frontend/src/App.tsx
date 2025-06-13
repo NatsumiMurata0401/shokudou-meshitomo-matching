@@ -601,7 +601,7 @@ function App() {
                         {meetup.datetime && (
                           <div className="flex items-center text-sm text-gray-600">
                             <Calendar className="w-4 h-4 mr-1" />
-                            <span>{format(parseISO(meetup.datetime), 'yyyy年MM月dd日 HH:mm (JST)', { locale: ja })}</span>
+                            <span>{format(parseISO(meetup.datetime), 'yyyy年MM月dd日 HH:mm', { locale: ja })} (JST)</span>
                           </div>
                         )}
                       </div>
@@ -621,7 +621,7 @@ function App() {
                         <div className="text-sm text-gray-500">
                           <span>投稿者: {meetup.creator}</span>
                           <span className="ml-4">
-                            {format(parseISO(meetup.created_at), 'yyyy年MM月dd日 HH:mm (JST)', { locale: ja })}
+                            {format(parseISO(meetup.created_at), 'yyyy年MM月dd日 HH:mm', { locale: ja })} (JST)
                           </span>
                         </div>
                         <div className="flex space-x-2">
@@ -678,7 +678,7 @@ function App() {
                     <div className="flex justify-between items-start">
                       <span className="font-medium text-blue-600">{msg.user}</span>
                       <span className="text-xs text-gray-500">
-                        {format(parseISO(msg.timestamp), 'yyyy年MM月dd日 HH:mm (JST)', { locale: ja })}
+                        {format(parseISO(msg.timestamp), 'yyyy年MM月dd日 HH:mm', { locale: ja })} (JST)
                       </span>
                     </div>
                     <p className="text-gray-700 mt-1">{msg.message}</p>
