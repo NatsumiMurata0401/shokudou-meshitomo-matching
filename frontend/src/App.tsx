@@ -626,13 +626,19 @@ function App() {
                         </div>
                         <div className="flex space-x-2">
                           <Button
-                            variant={userParticipations.includes(meetup.id) ? "default" : "outline"}
+                            variant={
+                              userParticipations.includes(meetup.id) || meetup.creator === user?.name
+                                ? "default"
+                                : "outline"
+                            }
                             size="sm"
                             onClick={() => handleJoinMeetup(meetup.id)}
-                            disabled={userParticipations.includes(meetup.id)}
+                            disabled={userParticipations.includes(meetup.id) || meetup.creator === user?.name}
                           >
                             <Users className="w-4 h-4 mr-1" />
-                            {userParticipations.includes(meetup.id) ? "参加済み" : "参加する"}
+                            {userParticipations.includes(meetup.id) || meetup.creator === user?.name
+                              ? "参加済み"
+                              : "参加する"}
                           </Button>
                           <Button
                             variant="outline"

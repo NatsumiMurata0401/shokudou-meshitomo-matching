@@ -246,7 +246,7 @@ async def create_meetup(meetup: MeetupCreate, current_user: str = Depends(get_cu
     }
     
     meetups_db[meetup_counter] = meetup_data
-    participants_db[meetup_counter] = []
+    participants_db[meetup_counter] = [current_user]
     chat_rooms_db[meetup_counter] = []
     
     return meetup_data
