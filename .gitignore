@@ -1,0 +1,11 @@
+# OSやエディタのキャッシュファイル
+.DS_Store
+
+# Python関連の無視ファイル
+__pycache__/
+*.pyc
+
+# Node.js関連の無視ファイル
+node_modules/
+dist/
+.env
