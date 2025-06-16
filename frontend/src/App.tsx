@@ -11,6 +11,7 @@ import { Search, Plus, MessageCircle, Calendar, MapPin, DollarSign, Users, Trash
 import { format, parseISO } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import './App.css'
+import NotificationList from '@/components/ui/NotificationList'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -64,6 +65,8 @@ function App() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showChatDialog, setShowChatDialog] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
+  const [showNotificationDialog, setShowNotificationDialog] = useState(false)
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user')
@@ -431,6 +434,33 @@ function App() {
           <div className="flex justify-between items-center h-16">
             <h1 className="text-xl font-semibold text-gray-900">衝動メシ友マッチング</h1>
             <div className="flex items-center space-x-4">
+              <Dialog open={showNotificationDialog} onOpenChange={setShowNotificationDialog}>
+                <DialogTrigger asChild>
+                  <button className="relative focus:outline-none">
+                    <MessageCircle className="w-6 h-6 text-gray-600" />
+                    {notificationUnreadCount > 0 && (
+                      <Badge
+                        variant="destructive"
+                        className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+                      >
+                        {notificationUnreadCount}
+                      </Badge>
+                    )}
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>通知</DialogTitle>
+                  </DialogHeader>
+                  {user && (
+                    <NotificationList
+                      userId={user.name}
+                      token={user.token}
+                      onUnreadCountChange={setNotificationUnreadCount}
+                    />
+                  )}
+                </DialogContent>
+              </Dialog>
               <span className="text-sm text-gray-600">こんにちは、{user?.name}さん</span>
               <Button variant="outline" onClick={handleLogout}>ログアウト</Button>
             </div>

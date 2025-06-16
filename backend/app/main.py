@@ -10,6 +10,11 @@ import secrets
 import re
 import json
 
+from uuid import uuid4
+from pydantic import BaseModel
+from typing import Optional, List
+from datetime import datetime
+
 app = FastAPI()
 
 # Disable CORS. Do not remove this for full-stack development.
@@ -34,6 +39,30 @@ def get_jst_now():
     """Get current datetime in Japan Standard Time (JST)"""
     jst = pytz.timezone('Asia/Tokyo')
     return datetime.now(jst)
+
+class Notification(BaseModel):
+    id: str
+    user_id: str
+    type: str
+    message: str
+    created_at: datetime
+    is_read: bool = False
+    related_meetup_id: Optional[str] = None
+
+notifications_db: List[Notification] = []
+
+async def create_notification(user_id: str, type: str, message: str, meetup_id: Optional[str] = None):
+    notification = Notification(
+        id=str(uuid4()),
+        user_id=user_id,
+        type=type,
+        message=message,
+        created_at=get_jst_now(),
+        is_read=False,
+        related_meetup_id=meetup_id
+    )
+    notifications_db.append(notification)
+    return notification
 
 class UserLogin(BaseModel):
     name: str
@@ -386,3 +415,21 @@ async def mark_messages_read(meetup_id: int, current_user: str = Depends(get_cur
     
     user_last_read_db[current_user][meetup_id] = get_jst_now().isoformat()
     return {"message": "Messages marked as read"}
+
+@app.get("/api/users/{user_id}/notifications", response_model=List[Notification])
+async def get_user_notifications(user_id: str, current_user: str = Depends(get_current_user)):
+    if user_id != current_user:
+        raise HTTPException(status_code=403, detail="Not authorized to view these notifications")
+    user_notifications = [n for n in notifications_db if n.user_id == user_id]
+    user_notifications.sort(key=lambda n: n.created_at, reverse=True)
+    return user_notifications
+
+@app.post("/api/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, current_user: str = Depends(get_current_user)):
+    for n in notifications_db:
+        if n.id == notification_id:
+            if n.user_id != current_user:
+                raise HTTPException(status_code=403, detail="Not authorized to update this notification")
+            n.is_read = True
+            return {"message": "Notification marked as read"}
+    raise HTTPException(status_code=404, detail="Notification not found")
