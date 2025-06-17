@@ -14,6 +14,7 @@ from uuid import uuid4
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+from fastapi import Query
 
 app = FastAPI()
 
@@ -317,6 +318,15 @@ async def join_meetup(meetup_id: int, current_user: str = Depends(get_current_us
     
     if current_user not in participants_db[meetup_id]:
         participants_db[meetup_id].append(current_user)
+
+        creator = meetups_db[meetup_id]["creator"]
+        if creator != current_user:
+            await create_notification(
+                user_id=creator,
+                type="participation",
+                message=f"{current_user}さんが「{meetups_db[meetup_id]['title']}」に参加しました",
+                meetup_id=str(meetup_id)
+            )
     
     return {"message": "Successfully joined meetup"}
 
@@ -345,6 +355,25 @@ async def send_message(meetup_id: int, message: ChatMessage, current_user: str =
     }
     
     chat_rooms_db[meetup_id].append(chat_message)
+
+    notified_users = set()
+    for participant in participants_db[meetup_id]:
+        if participant != current_user:
+            await create_notification(
+                user_id=participant,
+                type="chat",
+                message=f"{current_user}さん: {message.message[:20]}",
+                meetup_id=str(meetup_id)
+            )
+            notified_users.add(participant)
+    creator = meetups_db[meetup_id]["creator"]
+    if creator != current_user and creator not in notified_users:
+        await create_notification(
+            user_id=creator,
+            type="chat",
+            message=f"{current_user}さん: {message.message[:20]}",
+            meetup_id=str(meetup_id)
+        )
     
     return chat_message
 
@@ -399,9 +428,13 @@ async def get_unread_count(meetup_id: int, current_user: str = Depends(get_curre
     
     last_read = user_last_read_db.get(current_user, {}).get(meetup_id)
     if not last_read:
+        unread_count = sum(1 for msg in messages if msg["user"] != current_user)
         return {"unread_count": len(messages)}
     
-    unread_count = sum(1 for msg in messages if msg["timestamp"] > last_read)
+    unread_count = sum(
+        1 for msg in messages
+        if msg["timestamp"] > last_read and msg["user"] != current_user
+    )
     return {"unread_count": unread_count}
 
 @app.post("/api/meetups/{meetup_id}/mark-read")
@@ -414,6 +447,16 @@ async def mark_messages_read(meetup_id: int, current_user: str = Depends(get_cur
         user_last_read_db[current_user] = {}
     
     user_last_read_db[current_user][meetup_id] = get_jst_now().isoformat()
+
+    for n in notifications_db:
+        if (
+            n.user_id == current_user and
+            n.type == "chat" and
+            n.related_meetup_id == str(meetup_id) and
+            not n.is_read
+        ):
+            n.is_read = True
+
     return {"message": "Messages marked as read"}
 
 @app.get("/api/users/{user_id}/notifications", response_model=List[Notification])
@@ -433,3 +476,13 @@ async def mark_notification_read(notification_id: str, current_user: str = Depen
             n.is_read = True
             return {"message": "Notification marked as read"}
     raise HTTPException(status_code=404, detail="Notification not found")
+
+@app.get("/api/users/{user_id}/notifications/unread-count")
+async def get_unread_notification_count(user_id: str, current_user: str = Depends(get_current_user)):
+    if user_id != current_user:
+        raise HTTPException(status_code=403, detail="Not authorized to view these notifications")
+    count = sum(1 for n in notifications_db if n.user_id == user_id and not n.is_read)
+    return {"unread_count": count}
+
+
+

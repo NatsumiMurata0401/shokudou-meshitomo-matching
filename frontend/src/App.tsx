@@ -67,6 +67,7 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
   const [showNotificationDialog, setShowNotificationDialog] = useState(false)
+  const [notifications, setNotifications] = useState<any[]>([])
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user')
@@ -75,6 +76,7 @@ function App() {
       setUser(userData)
       setIsLoggedIn(true)
       fetchMeetups()
+      fetchNotificationUnreadCount()
     }
   }, [])
 
@@ -91,7 +93,23 @@ function App() {
       console.error('Failed to fetch meetups:', error)
     }
   }
-
+  
+  const fetchNotifications = async () => {
+    if (!user) return
+    try {
+      const res = await fetch(`${API_URL}/api/users/${user.name}/notifications`, {
+        headers: { Authorization: `Bearer ${user.token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setNotifications(data)
+        // 必要に応じてsetNotifications(data)などで状態管理
+        // 例: setNotifications(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error)
+    }
+  }
   useEffect(() => {
     if (isLoggedIn) {
       fetchMeetups()
@@ -104,6 +122,12 @@ function App() {
       fetchUnreadCounts()
     }
   }, [meetups, isLoggedIn])
+
+  useEffect(() => {
+    if (user) {
+      fetchNotificationUnreadCount()
+    }
+  }, [user])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -242,6 +266,20 @@ function App() {
       console.error('Failed to fetch user participations:', error)
     }
   }
+  const fetchNotificationUnreadCount = async () => {
+  if (!user) return
+  try {
+    const res = await fetch(`${API_URL}/api/users/${user.name}/notifications/unread-count`, {
+      headers: { Authorization: `Bearer ${user.token}` }
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setNotificationUnreadCount(data.unread_count)
+    }
+  } catch (error) {
+    console.error('Failed to fetch notification unread count:', error)
+  }
+  }
 
   const fetchUnreadCounts = async () => {
     if (!user) return
@@ -351,6 +389,8 @@ function App() {
         headers: { 'Authorization': `Bearer ${user?.token}` }
       })
       fetchUnreadCounts()
+      fetchNotificationUnreadCount()
+      fetchNotifications()
     } catch (error) {
       console.error('Failed to mark messages as read:', error)
     }
@@ -436,8 +476,12 @@ function App() {
             <div className="flex items-center space-x-4">
               <Dialog open={showNotificationDialog} onOpenChange={setShowNotificationDialog}>
                 <DialogTrigger asChild>
-                  <button className="relative focus:outline-none">
-                    <MessageCircle className="w-6 h-6 text-gray-600" />
+                  <button
+                    className={`relative focus:outline-none ${
+                      notificationUnreadCount > 0 ? 'animate-pulse text-blue-500' : 'text-gray-600'
+                    }`}
+                  >
+                    <MessageCircle className="w-6 h-6" />
                     {notificationUnreadCount > 0 && (
                       <Badge
                         variant="destructive"
@@ -451,12 +495,39 @@ function App() {
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
                     <DialogTitle>通知</DialogTitle>
+                    <DialogDescription>
+                      新着通知の一覧です。
+                    </DialogDescription>
                   </DialogHeader>
                   {user && (
                     <NotificationList
                       userId={user.name}
                       token={user.token}
+                      notifications={notifications}
                       onUnreadCountChange={setNotificationUnreadCount}
+                      onClose={() => setShowNotificationDialog(false)}
+                      onOpenChat={async (meetupId) => {   
+                        const meetup = meetups.find(m => m.id === meetupId)
+                        // チャットモーダルを開く
+                        if (meetup) {
+                          setSelectedMeetup(meetup)
+                          setShowChatDialog(true)
+                          fetchParticipants(meetup.id)
+                          fetchChatMessages(meetup.id)
+
+                        try {
+                          await fetch(`${API_URL}/api/meetups/${meetup.id}/mark-read`, {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${user?.token}` }
+                          })
+                          fetchUnreadCounts()
+                          fetchNotificationUnreadCount()
+                          fetchNotifications()
+                        } catch (error) {
+                          console.error('Failed to mark messages as read:', error)
+                        }
+                        } 
+                      }}
                     />
                   )}
                 </DialogContent>
