@@ -2,6 +2,7 @@ import { Badge } from './badge'
 import { format, parseISO } from 'date-fns'
 import { ja } from 'date-fns/locale'
 
+
 interface Notification {
   id: number
   type: 'participation' | 'chat'
@@ -22,18 +23,36 @@ type Props = {
   onUnreadCountChange?: (count: number) => void
   onClose?: () => void
   onOpenChat?: (meetupId: number) => void
+  fetchNotifications?: () => void
+  fetchNotificationUnreadCount?: () => void
+  setUnreadCount?: (count: number) => void
 }
 
-const NotificationList: React.FC<Props> = ({ notifications, onClose, onOpenChat }) => {
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+const NotificationList: React.FC<Props> = ({ notifications, token, onClose, onOpenChat, fetchNotifications, fetchNotificationUnreadCount}) => {
   // 通知クリック時
   const handleNotificationClick = async (notification: Notification) => {
-    // 既読処理はApp.tsx側でfetchNotificationsを呼ぶことで反映させる
-    onClose?.()
-    setTimeout(() => {
-      if (notification.type === 'chat') {
-        onOpenChat?.(Number(notification.related_meetup_id))
+    // 参加通知の場合は既読APIを呼ぶ
+    if (notification.type === 'participation') {
+
+      await fetch(`${API_URL}/api/notifications/${notification.id}/read`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (fetchNotifications) {
+        await fetchNotifications()
       }
-    }, 100)
+      if (fetchNotificationUnreadCount) {
+      await fetchNotificationUnreadCount()
+      }
+      onClose?.()
+    } else if (notification.type === 'chat') {
+      onClose?.()
+      setTimeout(() => {
+        onOpenChat?.(Number(notification.related_meetup_id))
+      }, 100) 
+    }
   }
 
   if (notifications.length === 0) {
@@ -55,7 +74,7 @@ const NotificationList: React.FC<Props> = ({ notifications, onClose, onOpenChat 
           <div
             key={n.id}
             className={`p-3 rounded cursor-pointer border ${n.is_read ? 'bg-white' : 'bg-blue-50 border-blue-200'}`}
-            onClick={() => handleNotificationClick(n)}
+            onClick={async () => await handleNotificationClick(n)}
           >
             <div className="flex items-center justify-between">
               <span className="font-semibold text-sm">

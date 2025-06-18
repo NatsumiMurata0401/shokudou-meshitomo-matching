@@ -125,6 +125,7 @@ function App() {
 
   useEffect(() => {
     if (user) {
+      fetchNotifications()
       fetchNotificationUnreadCount()
     }
   }, [user])
@@ -143,6 +144,7 @@ function App() {
         const userData = { name: loginForm.name, token: data.token }
         setUser(userData)
         setIsLoggedIn(true)
+        fetchNotifications()
         localStorage.setItem('user', JSON.stringify(userData))
         setLoginForm({ name: '', password: '' })
         fetchMeetups()
@@ -274,10 +276,11 @@ function App() {
     })
     if (res.ok) {
       const data = await res.json()
+      
       setNotificationUnreadCount(data.unread_count)
+      
     }
   } catch (error) {
-    console.error('Failed to fetch notification unread count:', error)
   }
   }
 
@@ -474,7 +477,16 @@ function App() {
           <div className="flex justify-between items-center h-16">
             <h1 className="text-xl font-semibold text-gray-900">衝動メシ友マッチング</h1>
             <div className="flex items-center space-x-4">
-              <Dialog open={showNotificationDialog} onOpenChange={setShowNotificationDialog}>
+              <Dialog 
+                open={showNotificationDialog} 
+                onOpenChange={(open) => {
+                  setShowNotificationDialog(open)
+                  if (!open) {
+                    // ダイアログが閉じられた時に未読・既読情報を再取得
+                    fetchNotifications()
+                    fetchNotificationUnreadCount()
+                  }
+                }}>
                 <DialogTrigger asChild>
                   <button
                     className={`relative focus:outline-none ${
@@ -528,6 +540,8 @@ function App() {
                         }
                         } 
                       }}
+                      fetchNotifications={fetchNotifications}
+                      fetchNotificationUnreadCount={fetchNotificationUnreadCount}
                     />
                   )}
                 </DialogContent>
