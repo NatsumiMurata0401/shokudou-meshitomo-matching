@@ -68,6 +68,7 @@ function App() {
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
   const [showNotificationDialog, setShowNotificationDialog] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
+  const [meetupParticipants, setMeetupParticipants] = useState<{ [meetupId: number]: string[] }>({})
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user')
@@ -268,6 +269,27 @@ function App() {
       console.error('Failed to fetch user participations:', error)
     }
   }
+  const fetchAllMeetupParticipants = async () => {
+    if (!user) return
+    const participantsMap: { [meetupId: number]: string[] } = {}
+    for (const meetup of meetups) {
+      try {
+        const response = await fetch(`${API_URL}/api/meetups/${meetup.id}/participants`)
+        if (response.ok) {
+          const data = await response.json()
+          participantsMap[meetup.id] = data.participants
+        }
+      } catch (error) {
+        console.error('Failed to fetch participants for meetup', meetup.id)
+      }
+    }
+    setMeetupParticipants(participantsMap)
+  }
+  useEffect(() => {
+    if (meetups.length > 0) {
+      fetchAllMeetupParticipants()
+    }
+  }, [meetups])
   const fetchNotificationUnreadCount = async () => {
   if (!user) return
   try {
@@ -735,6 +757,11 @@ function App() {
                       <div className="flex justify-between items-center">
                         <div className="text-sm text-gray-500">
                           <span>投稿者: {meetup.creator}</span>
+                          {meetupParticipants[meetup.id] && meetupParticipants[meetup.id].length > 0 && (
+                            <span className="ml-4 text-blue-600">
+                              参加者: {meetupParticipants[meetup.id].join(', ')}
+                            </span>
+                          )}
                           <span className="ml-4">
                             {format(parseISO(meetup.created_at), 'yyyy年MM月dd日 HH:mm', { locale: ja })} (JST)
                           </span>
