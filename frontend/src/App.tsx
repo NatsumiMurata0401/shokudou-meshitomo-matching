@@ -782,6 +782,7 @@ function App() {
                               ? "参加済み"
                               : "参加する"}
                           </Button>
+                          {(userParticipations.includes(meetup.id) || meetup.creator === user?.name) && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -799,6 +800,7 @@ function App() {
                               </Badge>
                             )}
                           </Button>
+                          )}
                         </div>
                       </div>
                     </CardContent>
