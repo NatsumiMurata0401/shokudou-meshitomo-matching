@@ -68,6 +68,8 @@ function App() {
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0)
   const [showNotificationDialog, setShowNotificationDialog] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
+  const [meetupParticipants, setMeetupParticipants] = useState<{ [meetupId: number]: string[] }>({})
+  const [allMeetups, setAllMeetups] = useState<Meetup[]>([])
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user')
@@ -122,6 +124,19 @@ function App() {
       fetchUnreadCounts()
     }
   }, [meetups, isLoggedIn])
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/meetups`)
+        const data = await res.json()
+        setAllMeetups(data)
+      } catch (e) {
+        console.error('Failed to fetch all meetups:', e)
+      }
+    }
+    fetchAll()
+  }, [])
 
   useEffect(() => {
     if (user) {
@@ -268,6 +283,27 @@ function App() {
       console.error('Failed to fetch user participations:', error)
     }
   }
+  const fetchAllMeetupParticipants = async () => {
+    if (!user) return
+    const participantsMap: { [meetupId: number]: string[] } = {}
+    for (const meetup of meetups) {
+      try {
+        const response = await fetch(`${API_URL}/api/meetups/${meetup.id}/participants`)
+        if (response.ok) {
+          const data = await response.json()
+          participantsMap[meetup.id] = data.participants
+        }
+      } catch (error) {
+        console.error('Failed to fetch participants for meetup', meetup.id)
+      }
+    }
+    setMeetupParticipants(participantsMap)
+  }
+  useEffect(() => {
+    if (meetups.length > 0) {
+      fetchAllMeetupParticipants()
+    }
+  }, [meetups])
   const fetchNotificationUnreadCount = async () => {
   if (!user) return
   try {
@@ -654,6 +690,43 @@ function App() {
                   </div>
                 </CardContent>
               </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">参加している募集</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {userParticipations.length === 0 ? (
+                    <div className="text-gray-500 text-sm">まだ参加済みの募集はありません</div>
+                  ) : (
+                   <ul className="space-y-2">
+                    {allMeetups
+                      .filter((meetup) => userParticipations.includes(meetup.id))
+                      .map((meetup) => (
+                        <li key={meetup.id} className="flex justify-between items-center border-b pb-1">
+                          <span className="font-medium">{meetup.title}</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openChatDialog(meetup)}
+                            className="ml-2"
+                          >
+                            <MessageCircle className="w-4 h-4 mr-1" />
+                            チャット
+                            {unreadCounts[meetup.id] > 0 && (
+                              <Badge 
+                                variant="destructive" 
+                                className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+                              >
+                                {unreadCounts[meetup.id]}
+                              </Badge>
+                            )}
+                          </Button>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+                </CardContent>
+              </Card>   
             </div>
           </div>
 
@@ -735,6 +808,11 @@ function App() {
                       <div className="flex justify-between items-center">
                         <div className="text-sm text-gray-500">
                           <span>投稿者: {meetup.creator}</span>
+                          {meetupParticipants[meetup.id] && meetupParticipants[meetup.id].length > 0 && (
+                            <span className="ml-4 text-blue-600">
+                              参加者: {meetupParticipants[meetup.id].join(', ')}
+                            </span>
+                          )}
                           <span className="ml-4">
                             {format(parseISO(meetup.created_at), 'yyyy年MM月dd日 HH:mm', { locale: ja })} (JST)
                           </span>
@@ -755,6 +833,7 @@ function App() {
                               ? "参加済み"
                               : "参加する"}
                           </Button>
+                          {(userParticipations.includes(meetup.id) || meetup.creator === user?.name) && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -772,6 +851,7 @@ function App() {
                               </Badge>
                             )}
                           </Button>
+                          )}
                         </div>
                       </div>
                     </CardContent>
