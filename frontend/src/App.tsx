@@ -69,6 +69,7 @@ function App() {
   const [showNotificationDialog, setShowNotificationDialog] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
   const [meetupParticipants, setMeetupParticipants] = useState<{ [meetupId: number]: string[] }>({})
+  const [allMeetups, setAllMeetups] = useState<Meetup[]>([])
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user')
@@ -123,6 +124,19 @@ function App() {
       fetchUnreadCounts()
     }
   }, [meetups, isLoggedIn])
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/meetups`)
+        const data = await res.json()
+        setAllMeetups(data)
+      } catch (e) {
+        console.error('Failed to fetch all meetups:', e)
+      }
+    }
+    fetchAll()
+  }, [])
 
   useEffect(() => {
     if (user) {
@@ -684,33 +698,33 @@ function App() {
                   {userParticipations.length === 0 ? (
                     <div className="text-gray-500 text-sm">まだ参加済みの募集はありません</div>
                   ) : (
-                    <ul className="space-y-2">
-                      {meetups
-                        .filter((meetup) => userParticipations.includes(meetup.id))
-                        .map((meetup) => (
-                          <li key={meetup.id} className="flex justify-between items-center border-b pb-1">
-                            <span className="font-medium">{meetup.title}</span>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openChatDialog(meetup)}
-                              className="ml-2"
-                            >
-                              <MessageCircle className="w-4 h-4 mr-1" />
-                              チャット
-                              {unreadCounts[meetup.id] > 0 && (
-                                <Badge 
-                                  variant="destructive" 
-                                  className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
-                                >
-                                  {unreadCounts[meetup.id]}
-                                </Badge>
-                              )}
-                            </Button>
-                          </li>
-                        ))}
-                    </ul>
-                  )}
+                   <ul className="space-y-2">
+                    {allMeetups
+                      .filter((meetup) => userParticipations.includes(meetup.id))
+                      .map((meetup) => (
+                        <li key={meetup.id} className="flex justify-between items-center border-b pb-1">
+                          <span className="font-medium">{meetup.title}</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openChatDialog(meetup)}
+                            className="ml-2"
+                          >
+                            <MessageCircle className="w-4 h-4 mr-1" />
+                            チャット
+                            {unreadCounts[meetup.id] > 0 && (
+                              <Badge 
+                                variant="destructive" 
+                                className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+                              >
+                                {unreadCounts[meetup.id]}
+                              </Badge>
+                            )}
+                          </Button>
+                        </li>
+                      ))}
+                  </ul>
+                )}
                 </CardContent>
               </Card>   
             </div>
