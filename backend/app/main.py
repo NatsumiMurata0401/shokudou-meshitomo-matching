@@ -241,19 +241,20 @@ async def create_meetup(meetup: MeetupCreate, current_user: str = Depends(get_cu
     meetup_counter += 1
     
     if meetup.food_item or meetup.budget or meetup.location:
+       
         structured_data = {
-            "food_genre": meetup.food_item,
+            "food_genre": meetup.food_item if meetup.food_item and meetup.food_item.strip() else None,
             "specific_menu": None,
-            "location": meetup.location,
-            "budget": meetup.budget,
+            "location": meetup.location if meetup.location and meetup.location.strip() else None,
+            "budget": meetup.budget if meetup.budget and meetup.budget.strip() else None,
             "other_requirements": []
         }
         content_parts = []
-        if meetup.food_item:
+        if meetup.food_item and meetup.food_item.strip():
             content_parts.append(f"{meetup.food_item}の募集")
-        if meetup.budget:
+        if meetup.budget and meetup.budget.strip():
             content_parts.append(f"予算:{meetup.budget}")
-        if meetup.location:
+        if meetup.location and meetup.location.strip():
             content_parts.append(f"場所:{meetup.location}")
         content = " ".join(content_parts) if content_parts else meetup.content
         title = f"【{meetup.food_item or '食事'}募集】"
@@ -262,6 +263,12 @@ async def create_meetup(meetup: MeetupCreate, current_user: str = Depends(get_cu
         structured_data = extract_structured_data(meetup.content)
         hashtags = generate_hashtags(meetup.content, structured_data)
         title, content = generate_title_and_description(meetup.content, structured_data)
+    
+    datetime_value = None
+    if meetup.structured_datetime and meetup.structured_datetime.strip():
+        datetime_value = meetup.structured_datetime
+    elif meetup.datetime and meetup.datetime.strip():
+        datetime_value = meetup.datetime
     
     meetup_data = {
         "id": meetup_counter,
@@ -272,8 +279,10 @@ async def create_meetup(meetup: MeetupCreate, current_user: str = Depends(get_cu
         "hashtags": hashtags,
         "creator": current_user,
         "created_at": get_jst_now().isoformat(),
-        "datetime": meetup.structured_datetime or meetup.datetime
+        "datetime": datetime_value
     }
+
+    print(f"Created meetup data: {meetup_data}")
     
     meetups_db[meetup_counter] = meetup_data
     participants_db[meetup_counter] = [current_user]
@@ -429,13 +438,13 @@ async def get_unread_count(meetup_id: int, current_user: str = Depends(get_curre
     last_read = user_last_read_db.get(current_user, {}).get(meetup_id)
     if not last_read:
         unread_count = sum(1 for msg in messages if msg["user"] != current_user)
-        return {"unread_count": len(messages)}
+    else:    
+        unread_count = sum(
+            1 for msg in messages
+            if msg["timestamp"] > last_read and msg["user"] != current_user
+        )
     
-    unread_count = sum(
-        1 for msg in messages
-        if msg["timestamp"] > last_read and msg["user"] != current_user
-    )
-    return {"unread_count": unread_count}
+    return {"unread_count": max(0, unread_count)}
 
 @app.post("/api/meetups/{meetup_id}/mark-read")
 async def mark_messages_read(meetup_id: int, current_user: str = Depends(get_current_user)):

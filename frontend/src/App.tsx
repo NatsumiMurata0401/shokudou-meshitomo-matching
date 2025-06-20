@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-
+import RecruitmentList from "./components/ui/RecruitmentList";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Search, Plus, MessageCircle, Calendar, MapPin, DollarSign, Users, Trash2, Send } from 'lucide-react'
+import { Search, Plus, MessageCircle, Send } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import './App.css'
@@ -29,6 +29,7 @@ interface Meetup {
     specific_menu?: string
     location?: string
     budget?: string
+    capacity?: number
     other_requirements: string[]
   }
   hashtags: string[]
@@ -70,6 +71,89 @@ function App() {
   const [notifications, setNotifications] = useState<any[]>([])
   const [meetupParticipants, setMeetupParticipants] = useState<{ [meetupId: number]: string[] }>({})
   const [allMeetups, setAllMeetups] = useState<Meetup[]>([])
+  const [highlightedMeetupId, setHighlightedMeetupId] = useState<number | null>(null)
+
+  const recruitments = meetups.map((meetup: Meetup) => {
+    const isCreator = user?.name === meetup.creator;
+    const isJoined = userParticipations.includes(meetup.id) || isCreator;
+    const isHighlighted = highlightedMeetupId === meetup.id;
+    const rawUnreadCount = unreadCounts[meetup.id];
+
+    
+    let displayDatetime = "未定";
+    if (meetup.datetime !== null && 
+      meetup.datetime !== undefined && 
+      meetup.datetime !== "" && 
+      String(meetup.datetime).trim() !== "") {
+    displayDatetime = meetup.datetime;
+  }
+
+    let displayLocation = "未定";
+    if (meetup.structured_data.location !== null && 
+      meetup.structured_data.location !== undefined && 
+      meetup.structured_data.location !== "" && 
+      String(meetup.structured_data.location).trim() !== "") {
+    displayLocation = meetup.structured_data.location;
+  }
+  // デバッグ用ログ
+  console.log(`Meetup ${meetup.id} processing:`, {
+    original_datetime: meetup.datetime,
+    original_location: meetup.structured_data?.location,
+    final_datetime: displayDatetime,
+    final_location: displayLocation
+  });
+  
+    return {
+      id: meetup.id,
+      ownerName: meetup.creator,
+      title: meetup.title,
+      datetime: displayDatetime,
+      location: displayLocation,
+      joined: isJoined,
+      participants: meetupParticipants[meetup.id] || [],
+      currentUserName: user?.name,
+      unreadCount: rawUnreadCount > 0 ? rawUnreadCount : undefined,
+      isHighlighted: isHighlighted,
+      onJoin: (id: number) => handleJoinMeetup(id),
+      onChat: (id: number) => {
+        const meetup = meetups.find(m => m.id === id);
+        if (meetup) {
+          openChatDialog(meetup);
+        }
+      },
+      onCardClick: (id: number) => {
+        // カードクリック時の処理（参加済みの場合のみチャットを開く）
+        const clickedMeetup = meetups.find(m => m.id === id);
+        const isParticipantOrOwner = userParticipations.includes(id) || user?.name === clickedMeetup?.creator;
+        
+        if (clickedMeetup && isParticipantOrOwner) {
+          openChatDialog(clickedMeetup);
+        }
+      },
+      onDelete: (id: number) => handleDeleteMeetup(id)
+    };
+  });
+
+  const scrollToMeetupCard = (meetupId: number) => {
+    // ハイライト表示
+    setHighlightedMeetupId(meetupId)
+    
+    // スクロール
+    setTimeout(() => {
+      const element = document.getElementById(`meetup-card-${meetupId}`)
+      if (element) {
+        element.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center' 
+        })
+      }
+    }, 100)
+    
+    // 3秒後にハイライトを解除
+    setTimeout(() => {
+      setHighlightedMeetupId(null)
+    }, 3000)
+  }
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user')
@@ -105,13 +189,12 @@ function App() {
       if (res.ok) {
         const data = await res.json()
         setNotifications(data)
-        // 必要に応じてsetNotifications(data)などで状態管理
-        // 例: setNotifications(data)
       }
     } catch (error) {
       console.error('Failed to fetch notifications:', error)
     }
   }
+
   useEffect(() => {
     if (isLoggedIn) {
       fetchMeetups()
@@ -283,6 +366,7 @@ function App() {
       console.error('Failed to fetch user participations:', error)
     }
   }
+
   const fetchAllMeetupParticipants = async () => {
     if (!user) return
     const participantsMap: { [meetupId: number]: string[] } = {}
@@ -299,25 +383,26 @@ function App() {
     }
     setMeetupParticipants(participantsMap)
   }
+
   useEffect(() => {
     if (meetups.length > 0) {
       fetchAllMeetupParticipants()
     }
   }, [meetups])
+
   const fetchNotificationUnreadCount = async () => {
-  if (!user) return
-  try {
-    const res = await fetch(`${API_URL}/api/users/${user.name}/notifications/unread-count`, {
-      headers: { Authorization: `Bearer ${user.token}` }
-    })
-    if (res.ok) {
-      const data = await res.json()
-      
-      setNotificationUnreadCount(data.unread_count)
-      
+    if (!user) return
+    try {
+      const res = await fetch(`${API_URL}/api/users/${user.name}/notifications/unread-count`, {
+        headers: { Authorization: `Bearer ${user.token}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setNotificationUnreadCount(data.unread_count)
+      }
+    } catch (error) {
+      console.error('Failed to fetch notification unread count:', error)
     }
-  } catch (error) {
-  }
   }
 
   const fetchUnreadCounts = async () => {
@@ -337,7 +422,9 @@ function App() {
       
       const results = await Promise.all(promises)
       const counts = results.reduce((acc, { meetupId, count }) => {
-        acc[meetupId] = count
+        if (count > 0) {
+          acc[meetupId] = count
+        }
         return acc
       }, {} as {[key: number]: number})
       
@@ -435,14 +522,29 @@ function App() {
     }
   }
 
+  // ログインしていない場合のUI
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
+      <div 
+        className="min-h-screen flex items-center justify-center p-4"
+        style={{ backgroundColor: '#F0FFF0' }}
+      >
+        <Card 
+          className="w-full max-w-md shadow-lg"
+          style={{
+            backgroundColor: '#F8FFF8',
+            border: '1px solid #D9F5E6'
+          }}
+        >
           <CardHeader>
-            <CardTitle className="text-center text-2xl">衝動メシ友マッチング</CardTitle>
+            <CardTitle 
+              className="text-2xl font-bold text-center"
+              style={{ color: '#2E8B57' }}
+            >
+              🍽️ メシ友マッチング
+            </CardTitle>
             <CardDescription className="text-center">
-              ログインまたは新規登録してください
+              ログインして美味しいご飯を一緒に食べる仲間を見つけよう！
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -451,52 +553,96 @@ function App() {
                 <TabsTrigger value="login">ログイン</TabsTrigger>
                 <TabsTrigger value="register">新規登録</TabsTrigger>
               </TabsList>
-              
               <TabsContent value="login">
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div>
+                    <label className="block text-sm font-medium mb-1" style={{ color: '#2E8B57' }}>
+                      ユーザー名
+                    </label>
                     <Input
                       type="text"
-                      placeholder="名前"
+                      placeholder="ユーザー名を入力"
                       value={loginForm.name}
-                      onChange={(e) => setLoginForm({...loginForm, name: e.target.value})}
+                      onChange={(e) => setLoginForm({ ...loginForm, name: e.target.value })}
                       required
+                      style={{
+                        borderColor: '#D9F5E6',
+                        backgroundColor: '#FDFDFD'
+                      }}
                     />
                   </div>
                   <div>
+                    <label className="block text-sm font-medium mb-1" style={{ color: '#2E8B57' }}>
+                      パスワード
+                    </label>
                     <Input
                       type="password"
-                      placeholder="パスワード"
+                      placeholder="パスワードを入力"
                       value={loginForm.password}
-                      onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
+                      onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
                       required
+                      style={{
+                        borderColor: '#D9F5E6',
+                        backgroundColor: '#FDFDFD'
+                      }}
                     />
                   </div>
-                  <Button type="submit" className="w-full">ログイン</Button>
+                  <Button 
+                    type="submit" 
+                    className="w-full font-bold rounded-full"
+                    style={{
+                      backgroundColor: '#66BB6A',
+                      color: 'white'
+                    }}
+                  >
+                    ログイン
+                  </Button>
                 </form>
               </TabsContent>
-              
               <TabsContent value="register">
                 <form onSubmit={handleRegister} className="space-y-4">
                   <div>
+                    <label className="block text-sm font-medium mb-1" style={{ color: '#2E8B57' }}>
+                      ユーザー名
+                    </label>
                     <Input
                       type="text"
-                      placeholder="名前"
+                      placeholder="ユーザー名を入力"
                       value={registerForm.name}
-                      onChange={(e) => setRegisterForm({...registerForm, name: e.target.value})}
+                      onChange={(e) => setRegisterForm({ ...registerForm, name: e.target.value })}
                       required
+                      style={{
+                        borderColor: '#D9F5E6',
+                        backgroundColor: '#FDFDFD'
+                      }}
                     />
                   </div>
                   <div>
+                    <label className="block text-sm font-medium mb-1" style={{ color: '#2E8B57' }}>
+                      パスワード
+                    </label>
                     <Input
                       type="password"
-                      placeholder="パスワード"
+                      placeholder="パスワードを入力"
                       value={registerForm.password}
-                      onChange={(e) => setRegisterForm({...registerForm, password: e.target.value})}
+                      onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
                       required
+                      style={{
+                        borderColor: '#D9F5E6',
+                        backgroundColor: '#FDFDFD'
+                      }}
                     />
                   </div>
-                  <Button type="submit" className="w-full">新規登録</Button>
+                  <Button 
+                    type="submit" 
+                    className="w-full font-bold rounded-full"
+                    style={{
+                      backgroundColor: '#66BB6A',
+                      color: 'white'
+                    }}
+                  >
+                    新規登録
+                  </Button>
                 </form>
               </TabsContent>
             </Tabs>
@@ -507,42 +653,61 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
+    <div className="min-h-screen" style={{ backgroundColor: '#F0FFF0' }}>
+      <header 
+        className="shadow-sm border-b"
+        style={{ backgroundColor: '#F8FFF8', borderColor: '#D9F5E6' }}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <h1 className="text-xl font-semibold text-gray-900">衝動メシ友マッチング</h1>
+            <h1 
+              className="text-xl font-bold"
+              style={{ color: '#2E8B57' }}
+            >
+              🍽️ メシ友マッチング
+            </h1>
             <div className="flex items-center space-x-4">
               <Dialog 
                 open={showNotificationDialog} 
                 onOpenChange={(open) => {
                   setShowNotificationDialog(open)
                   if (!open) {
-                    // ダイアログが閉じられた時に未読・既読情報を再取得
                     fetchNotifications()
                     fetchNotificationUnreadCount()
                   }
                 }}>
                 <DialogTrigger asChild>
                   <button
-                    className={`relative focus:outline-none ${
-                      notificationUnreadCount > 0 ? 'animate-pulse text-blue-500' : 'text-gray-600'
+                    className={`relative p-2 rounded-full transition-colors ${
+                      notificationUnreadCount > 0 
+                        ? 'text-pink-500 animate-pulse' 
+                        : 'text-gray-600 hover:text-green-500'
                     }`}
+                    style={{ 
+                      backgroundColor: notificationUnreadCount > 0 ? '#FFE5E5' : 'transparent'
+                    }}
                   >
                     <MessageCircle className="w-6 h-6" />
                     {notificationUnreadCount > 0 && (
                       <Badge
                         variant="destructive"
                         className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+                        style={{ backgroundColor: '#FF6B9D' }}
                       >
                         {notificationUnreadCount}
                       </Badge>
                     )}
                   </button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent 
+                  className="sm:max-w-md"
+                  style={{
+                    backgroundColor: '#F8FFF8',
+                    border: '1px solid #D9F5E6'
+                  }}
+                >
                   <DialogHeader>
-                    <DialogTitle>通知</DialogTitle>
+                    <DialogTitle style={{ color: '#2E8B57' }}>通知</DialogTitle>
                     <DialogDescription>
                       新着通知の一覧です。
                     </DialogDescription>
@@ -556,24 +721,23 @@ function App() {
                       onClose={() => setShowNotificationDialog(false)}
                       onOpenChat={async (meetupId) => {   
                         const meetup = meetups.find(m => m.id === meetupId)
-                        // チャットモーダルを開く
                         if (meetup) {
                           setSelectedMeetup(meetup)
                           setShowChatDialog(true)
                           fetchParticipants(meetup.id)
                           fetchChatMessages(meetup.id)
 
-                        try {
-                          await fetch(`${API_URL}/api/meetups/${meetup.id}/mark-read`, {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${user?.token}` }
-                          })
-                          fetchUnreadCounts()
-                          fetchNotificationUnreadCount()
-                          fetchNotifications()
-                        } catch (error) {
-                          console.error('Failed to mark messages as read:', error)
-                        }
+                          try {
+                            await fetch(`${API_URL}/api/meetups/${meetup.id}/mark-read`, {
+                              method: 'POST',
+                              headers: { 'Authorization': `Bearer ${user?.token}` }
+                            })
+                            fetchUnreadCounts()
+                            fetchNotificationUnreadCount()
+                            fetchNotifications()
+                          } catch (error) {
+                            console.error('Failed to mark messages as read:', error)
+                          }
                         } 
                       }}
                       fetchNotifications={fetchNotifications}
@@ -582,8 +746,24 @@ function App() {
                   )}
                 </DialogContent>
               </Dialog>
-              <span className="text-sm text-gray-600">こんにちは、{user?.name}さん</span>
-              <Button variant="outline" onClick={handleLogout}>ログアウト</Button>
+              <span 
+                className="text-sm font-medium"
+                style={{ color: '#2E8B57' }}
+              >
+                こんにちは、{user?.name}さん
+              </span>
+              <Button 
+                variant="outline" 
+                onClick={handleLogout}
+                style={{
+                  borderColor: '#66BB6A',
+                  color: '#66BB6A',
+                  backgroundColor: 'transparent'
+                }}
+                className="hover:bg-green-50"
+              >
+                ログアウト
+              </Button>
             </div>
           </div>
         </div>
@@ -595,37 +775,58 @@ function App() {
             <div className="space-y-4">
               <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
                 <DialogTrigger asChild>
-                  <Button className="w-full" size="lg">
+                  <Button 
+                    className="w-full font-bold rounded-full shadow-md"
+                    size="lg"
+                    style={{
+                      backgroundColor: '#66BB6A',
+                      color: 'white'
+                    }}
+                  >
                     <Plus className="w-4 h-4 mr-2" />
                     募集を作成
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent 
+                  className="sm:max-w-md"
+                  style={{
+                    backgroundColor: '#F8FFF8',
+                    border: '1px solid #D9F5E6'
+                  }}
+                >
                   <DialogHeader>
-                    <DialogTitle>新しい募集を作成</DialogTitle>
+                    <DialogTitle style={{ color: '#2E8B57' }}>新しい募集を作成</DialogTitle>
                     <DialogDescription>
                       食べたいものや希望を自由に入力してください
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleCreateMeetup} className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        食べたいもの！
+                      <label className="block text-sm font-medium mb-1" style={{ color: '#2E8B57' }}>
+                        食べたいもの
                       </label>
                       <Input
                         placeholder="例：焼肉、ラーメン、イタリアン"
                         value={newMeetupFoodItem}
                         onChange={(e) => setNewMeetupFoodItem(e.target.value)}
                         required
+                        style={{
+                          borderColor: '#D9F5E6',
+                          backgroundColor: '#FDFDFD'
+                        }}
                       />
                     </div>
                     
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium mb-1" style={{ color: '#2E8B57' }}>
                         予算
                       </label>
                       <select 
-                        className="w-full rounded-md border border-zinc-200 bg-transparent px-3 py-2 text-sm"
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        style={{
+                          borderColor: '#D9F5E6',
+                          backgroundColor: '#FDFDFD'
+                        }}
                         value={newMeetupBudget}
                         onChange={(e) => setNewMeetupBudget(e.target.value)}
                       >
@@ -638,225 +839,161 @@ function App() {
                     </div>
                     
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium mb-1" style={{ color: '#2E8B57' }}>
                         場所
                       </label>
                       <Input
                         placeholder="例：渋谷、新宿、オフィス周辺"
                         value={newMeetupLocation}
                         onChange={(e) => setNewMeetupLocation(e.target.value)}
+                        style={{
+                          borderColor: '#D9F5E6',
+                          backgroundColor: '#FDFDFD'
+                        }}
                       />
                     </div>
                     
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium mb-1" style={{ color: '#2E8B57' }}>
                         希望日時
                       </label>
                       <Input
                         type="datetime-local"
                         value={newMeetupDateTime}
                         onChange={(e) => setNewMeetupDateTime(e.target.value)}
+                        style={{
+                          borderColor: '#D9F5E6',
+                          backgroundColor: '#FDFDFD'
+                        }}
                       />
                     </div>
                     
-                    <Button type="submit" className="w-full">募集を作成</Button>
+                    <Button 
+                      type="submit" 
+                      className="w-full font-bold rounded-full"
+                      style={{
+                        backgroundColor: '#66BB6A',
+                        color: 'white'
+                      }}
+                    >
+                      募集を作成
+                    </Button>
                   </form>
                 </DialogContent>
               </Dialog>
 
-              <Card>
+              <Card 
+                style={{
+                  backgroundColor: '#F8FFF8',
+                  border: '1px solid #D9F5E6'
+                }}
+                className="shadow-md"
+              >
                 <CardHeader>
-                  <CardTitle className="text-lg">検索・フィルター</CardTitle>
+                  <CardTitle 
+                    className="text-lg font-bold"
+                    style={{ color: '#2E8B57' }}
+                  >
+                    検索・フィルター
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Search className="absolute left-3 top-3 h-4 w-4" style={{ color: '#66BB6A' }} />
                     <Input
                       placeholder="キーワードで検索"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10"
+                      style={{
+                        borderColor: '#D9F5E6',
+                        backgroundColor: '#FDFDFD'
+                      }}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium mb-1" style={{ color: '#2E8B57' }}>
                       日付フィルター
                     </label>
                     <Input
                       type="date"
                       value={dateFilter}
                       onChange={(e) => setDateFilter(e.target.value)}
+                      style={{
+                        borderColor: '#D9F5E6',
+                        backgroundColor: '#FDFDFD'
+                      }}
                     />
                   </div>
                 </CardContent>
               </Card>
-              <Card>
+
+              <Card 
+                style={{
+                  backgroundColor: '#F8FFF8',
+                  border: '1px solid #D9F5E6'
+                }}
+                className="shadow-md"
+              >
                 <CardHeader>
-                  <CardTitle className="text-lg">参加している募集</CardTitle>
+                  <CardTitle 
+                    className="text-lg font-bold"
+                    style={{ color: '#2E8B57' }}
+                  >
+                    参加している募集
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {userParticipations.length === 0 ? (
-                    <div className="text-gray-500 text-sm">まだ参加済みの募集はありません</div>
+                    <div className="text-gray-500 text-sm text-center py-4">
+                      まだ参加済みの募集はありません
+                    </div>
                   ) : (
-                   <ul className="space-y-2">
-                    {allMeetups
-                      .filter((meetup) => userParticipations.includes(meetup.id))
-                      .map((meetup) => (
-                        <li key={meetup.id} className="flex justify-between items-center border-b pb-1">
-                          <span className="font-medium">{meetup.title}</span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openChatDialog(meetup)}
-                            className="ml-2"
+                    <ul className="space-y-2">
+                      {allMeetups
+                        .filter((meetup) => userParticipations.includes(meetup.id))
+                        .map((meetup) => (
+                          <li 
+                            key={meetup.id} 
+                            className="border-b pb-2 rounded-lg p-2 cursor-pointer hover:bg-green-50 transition-colors duration-200"
+                            style={{ 
+                              backgroundColor: '#FDFDFD',
+                              borderColor: '#E6F7ED'
+                            }}
+                            onClick={() => scrollToMeetupCard(meetup.id)}
+                            title="クリックして募集カードに移動"
                           >
-                            <MessageCircle className="w-4 h-4 mr-1" />
-                            チャット
-                            {unreadCounts[meetup.id] > 0 && (
-                              <Badge 
-                                variant="destructive" 
-                                className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
-                              >
-                                {unreadCounts[meetup.id]}
-                              </Badge>
-                            )}
-                          </Button>
-                        </li>
-                      ))}
-                  </ul>
-                )}
+                            <span 
+                              className="font-medium text-sm"
+                              style={{ color: '#2E8B57' }}
+                            >
+                              {meetup.title}
+                            </span>
+                          </li>
+                        ))}
+                    </ul>
+                  )}
                 </CardContent>
-              </Card>   
+              </Card>
             </div>
           </div>
 
           <div className="lg:w-3/4">
             <div className="space-y-6">
-              {meetups.length === 0 ? (
-                <Card>
+              {recruitments.length === 0 ? (
+                <Card 
+                  style={{
+                    backgroundColor: '#F8FFF8',
+                    border: '1px solid #D9F5E6'
+                  }}
+                  className="shadow-md"
+                >
                   <CardContent className="text-center py-12">
                     <p className="text-gray-500">まだ募集がありません</p>
                   </CardContent>
                 </Card>
               ) : (
-                meetups.map((meetup) => (
-                  <Card key={meetup.id} className="hover:shadow-md transition-shadow">
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <CardTitle className="text-lg mb-2">{meetup.title}</CardTitle>
-                          <CardDescription className="text-base text-gray-700 mb-3">
-                            {meetup.content}
-                          </CardDescription>
-                          <div className="flex flex-wrap gap-2 mb-3">
-                            {meetup.hashtags.map((tag, index) => (
-                              <Badge key={index} variant="secondary">{tag}</Badge>
-                            ))}
-                          </div>
-                        </div>
-                        {meetup.creator === user?.name && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteMeetup(meetup.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                        {meetup.structured_data.food_genre && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <span className="font-medium">ジャンル:</span>
-                            <span className="ml-1">{meetup.structured_data.food_genre}</span>
-                          </div>
-                        )}
-                        {meetup.structured_data.location && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <MapPin className="w-4 h-4 mr-1" />
-                            <span>{meetup.structured_data.location}</span>
-                          </div>
-                        )}
-                        {meetup.structured_data.budget && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <DollarSign className="w-4 h-4 mr-1" />
-                            <span>{meetup.structured_data.budget}</span>
-                          </div>
-                        )}
-                        {meetup.datetime && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <Calendar className="w-4 h-4 mr-1" />
-                            <span>{format(parseISO(meetup.datetime), 'yyyy年MM月dd日 HH:mm', { locale: ja })} (JST)</span>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {meetup.structured_data.other_requirements.length > 0 && (
-                        <div className="mb-4">
-                          <span className="text-sm font-medium text-gray-700">その他の要望:</span>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {meetup.structured_data.other_requirements.map((req, index) => (
-                              <Badge key={index} variant="outline" className="text-xs">{req}</Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex justify-between items-center">
-                        <div className="text-sm text-gray-500">
-                          <span>投稿者: {meetup.creator}</span>
-                          {meetupParticipants[meetup.id] && meetupParticipants[meetup.id].length > 0 && (
-                            <span className="ml-4 text-blue-600">
-                              参加者: {meetupParticipants[meetup.id].join(', ')}
-                            </span>
-                          )}
-                          <span className="ml-4">
-                            {format(parseISO(meetup.created_at), 'yyyy年MM月dd日 HH:mm', { locale: ja })} (JST)
-                          </span>
-                        </div>
-                        <div className="flex space-x-2">
-                          <Button
-                            variant={
-                              userParticipations.includes(meetup.id) || meetup.creator === user?.name
-                                ? "default"
-                                : "outline"
-                            }
-                            size="sm"
-                            onClick={() => handleJoinMeetup(meetup.id)}
-                            disabled={userParticipations.includes(meetup.id) || meetup.creator === user?.name}
-                          >
-                            <Users className="w-4 h-4 mr-1" />
-                            {userParticipations.includes(meetup.id) || meetup.creator === user?.name
-                              ? "参加済み"
-                              : "参加する"}
-                          </Button>
-                          {(userParticipations.includes(meetup.id) || meetup.creator === user?.name) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openChatDialog(meetup)}
-                            className="relative"
-                          >
-                            <MessageCircle className="w-4 h-4 mr-1" />
-                            チャット
-                            {unreadCounts[meetup.id] > 0 && (
-                              <Badge 
-                                variant="destructive" 
-                                className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
-                              >
-                                {unreadCounts[meetup.id]}
-                              </Badge>
-                            )}
-                          </Button>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
+                <RecruitmentList recruitments={recruitments} />
               )}
             </div>
           </div>
@@ -864,22 +1001,39 @@ function App() {
       </main>
 
       <Dialog open={showChatDialog} onOpenChange={setShowChatDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent 
+          className="sm:max-w-md"
+          style={{
+            backgroundColor: '#F8FFF8',
+            border: '1px solid #D9F5E6'
+          }}
+        >
           <DialogHeader>
-            <DialogTitle>{selectedMeetup?.title}</DialogTitle>
+            <DialogTitle style={{ color: '#2E8B57' }}>{selectedMeetup?.title}</DialogTitle>
             <DialogDescription>
               参加者: {participants.join(', ')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <ScrollArea className="h-64 w-full border rounded p-4">
+            <ScrollArea 
+              className="h-64 w-full border rounded p-4"
+              style={{
+                borderColor: '#D9F5E6',
+                backgroundColor: '#FDFDFD'
+              }}
+            >
               <div className="space-y-2">
                 {chatMessages.map((msg) => (
                   <div key={msg.id} className="text-sm">
                     <div className="flex justify-between items-start">
-                      <span className="font-medium text-blue-600">{msg.user}</span>
+                      <span 
+                        className="font-medium"
+                        style={{ color: '#66BB6A' }}
+                      >
+                        {msg.user}
+                      </span>
                       <span className="text-xs text-gray-500">
-                        {format(parseISO(msg.timestamp), 'yyyy年MM月dd日 HH:mm', { locale: ja })} (JST)
+                        {format(parseISO(msg.timestamp), 'yyyy年MM月dd日 HH:mm', { locale: ja })}
                       </span>
                     </div>
                     <p className="text-gray-700 mt-1">{msg.message}</p>
@@ -893,8 +1047,20 @@ function App() {
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 className="flex-1"
+                style={{
+                  borderColor: '#D9F5E6',
+                  backgroundColor: '#FDFDFD'
+                }}
               />
-              <Button type="submit" size="sm">
+              <Button 
+                type="submit" 
+                size="sm"
+                className="rounded-full"
+                style={{
+                  backgroundColor: '#66BB6A',
+                  color: 'white'
+                }}
+              >
                 <Send className="w-4 h-4" />
               </Button>
             </form>
